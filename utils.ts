@@ -4,38 +4,39 @@ import { PRIORITY_MAP, TEAMS } from './constants';
 
 export const sortTasks = (tasks: Task[]): Task[] => {
   return [...tasks].sort((a, b) => {
-    // 1. Ordenar por Área (Producción vs Branding)
-    if (a.area !== b.area) {
-      return a.area.localeCompare(b.area);
-    }
-    
-    // 2. Ordenar por Equipo (según el orden definido en TEAMS)
-    const indexA = TEAMS.indexOf(a.responsible);
-    const indexB = TEAMS.indexOf(b.responsible);
-    if (indexA !== indexB) {
-      return indexA - indexB;
-    }
-
-    // 3. Ordenar por Prioridad (Urgente -> Alta -> Media -> Baja)
+        // 1. Ordenar por Prioridad (Urgente -> Alta -> Media -> Baja)
     const priorityDiff = PRIORITY_MAP[a.priority] - PRIORITY_MAP[b.priority];
     if (priorityDiff !== 0) {
       return priorityDiff;
     }
+    
+    // 2. Ordenar por Nombre de Persona Asignada (alfabéticamente)
+    const requesterCompare = a.requester.localeCompare(b.requester);
+    if (requesterCompare !== 0) {
+      return requesterCompare;
+    }
+    
+    // 3. Ordenar por Equipo Responsable (alfabéticamente)
+    const teamCompare = a.responsible.localeCompare(b.responsible);
+    if (teamCompare !== 0) {
+      return teamCompare;
+    }
 
-    // 4. Ordenar por Estado de Bloqueo
+    // 4. Ordenar por Área (Producción vs Branding)
+    if (a.area !== b.area) {
+      return a.area.localeCompare(b.area);
+    }
+    
+    // 5. Ordenar por Estado de Bloqueo
     const isABlocked = a.status.includes('Bloqueada');
     const isBBlocked = b.status.includes('Bloqueada');
     if (isABlocked && !isBBlocked) return -1;
     if (!isABlocked && isBBlocked) return 1;
 
-    // 5. Ordenar por Fecha de Entrega (si existe)
+    // 6. Ordenar por Fecha de Entrega (si existe)
     if (a.deliveryDate && b.deliveryDate) {
       return a.deliveryDate.localeCompare(b.deliveryDate);
-    }
-    
-    // 6. Ordenar por fecha de creación
-    return b.createdAt - a.createdAt;
-  });
+    ;
 };
 
 export const checkPriorityLimit = (
