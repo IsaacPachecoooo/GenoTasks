@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import Gun from 'gun';
+import { initializeApp } from 'firebase/app';
+import { getDatabase, ref, set, onValue, remove } from 'firebase/database';
 import { Task, UserRole, Team, Area, Status } from './types';
 import { TEAMS, AREAS } from './constants';
 import { sortTasks, getExportText, downloadAsText, getWeekStringFromDate, parseImportText } from './utils';
@@ -8,14 +9,19 @@ import TaskCreationWizard from './components/TaskCreationWizard';
 import TaskTable from './components/TaskTable';
 import TaskDetailModal from './components/TaskDetailModal';
 
-// Inicializar Gun con un par de servidores relay públicos para redundancia
-const gun = Gun({
-  peers: [
-    'https://gun-manhattan.herokuapp.com/gun',
-    'https://relay.peer.ooo/gun'
-  ]
-});
+const firebaseConfig = {
+  apiKey: "AIzaSyAJwtrCtfFCx157YJPJdvbJfLCQpDfUYEk4",
+  authDomain: "gen-lang-client-0247587121.firebaseapp.com",
+  databaseURL: "https://gen-lang-client-0247587121-default-rtdb.firebaseio.com",
+  projectId: "gen-lang-client-0247587121",
+  storageBucket: "gen-lang-client-0247587121.firebasestorage.app",
+  messagingSenderId: "183399994578",
+  appId: "1:183399994578:web:5fdf4e338786f4735c90b",
+  measurementId: "G-PRRXGDL3Z9"
+};
 
+const app = initializeApp(firebaseConfig);
+const database = getDatabase(app);
 const App: React.FC = () => {
   const [tasksMap, setTasksMap] = useState<Record<string, Task>>({});
   const [role, setRole] = useState<UserRole>('Leader');
@@ -41,31 +47,35 @@ const App: React.FC = () => {
 
   // Sincronización en tiempo real con Gun.js
   useEffect(() => {
-    // Usamos un nodo específico para las tareas
-    const tasksNode = gun.get('genotasks_production_v2_tasks');
+    const tasksRef = ref(database, 'genotasks_production_v2_tasks');
     
-    tasksNode.map().on((data: any, id: string) => {
-      if (data === null) {
-        setTasksMap(prev => {
-          const newMap = { ...prev };
-          delete newMap[id];
-          return newMap;
+    const unsubscribe = onValue(tasksRef, (snapshot) => {
+      const data = snapshot.val();
+      if (data) {
+        const newTasksMap: Record<string, Task> = {};
+        Object.keys(data).forEach(id => {
+          const taskData = data[id];
+          if (taskData) {
+            try {
+              newTasksMap[id] = {
+                ...taskData,
+                comments: taskData.comments ? JSON.parse(taskData.comments) : []
+              };
+            } catch (e) {
+              console.error("Error al parsear tarea:", e);
+            }
+          }
         });
+        setTasksMap(newTasksMap);
+        setIsSynced(true);
       } else {
-        // Gun devuelve los datos planos, los parseamos si es necesario (comentarios son un string JSON)
-        try {
-          const task: Task = {
-            ...data,
-            comments: data.comments ? JSON.parse(data.comments) : []
-          };
-          setTasksMap(prev => ({ ...prev, [id]: task }));
-        } catch (e) {
-          console.error("Error al parsear tarea de Gun:", e);
-        }
+        setTasksMap({});
+        setIsSynced(true);
       }
-      setIsSynced(true);
     });
 
+    return () => unsubscribe();
+  }, []);
     return () => {
       tasksNode.off();
     };
@@ -103,7 +113,7 @@ const App: React.FC = () => {
       ...task,
       comments: JSON.stringify(task.comments)
     };
-    gun.get('genotasks_production_v2_tasks').get(task.id).put(dataToSave as any);
+    set(ref(database, `genotasks_production_v2_tasks/${task.id}`), dataToSave);
     setIsWizardOpen(false);
     setFilterWeek(workingWeek);
   };
@@ -113,14 +123,14 @@ const App: React.FC = () => {
       ...updatedTask,
       comments: JSON.stringify(updatedTask.comments)
     };
-    gun.get('genotasks_production_v2_tasks').get(updatedTask.id).put(dataToSave as any);
+    set(ref(database, `genotasks_production_v2_tasks/${updatedTask.id}`), dataToSave);
     if (selectedTask?.id === updatedTask.id) {
        setSelectedTask(updatedTask);
     }
   };
 
   const handleDeleteTask = (id: string) => {
-    gun.get('genotasks_production_v2_tasks').get(id).put(null as any);
+    remove(ref(database, `genotasks_production_v2_tasks/${id}`));
     if (selectedTask?.id === id) setSelectedTask(null);
   };
 
@@ -153,7 +163,7 @@ const App: React.FC = () => {
               ...imported,
               comments: JSON.stringify(imported.comments)
             };
-            gun.get('genotasks_production_v2_tasks').get(imported.id).put(dataToSave as any);
+              set(ref(database, `genotasks_production_v2_tasks/${imported.id}`), dataToSave);
           });
           alert('Importación completada y sincronizada.');
           resetFilters(true);
